@@ -1,0 +1,36 @@
+# ===================================
+# Glue Job Definitions (Test Sandbox)
+# ===================================
+
+- name: wms-to-dataplatform-fi-part1
+  description: "Load historical WMS data to Data Platform"
+  script_file: wms-to-dataplatform-fi-part1.py
+  glue_version: "5.0"
+  python_version: "3"
+  command_name: "glueetl"
+  worker_type: G.2X
+  number_of_workers: 2
+  connections:
+    - "WMS-ADOPF001"
+  default_arguments:
+    "--extra-py-files": "s3://glue-sokar-test/glue_global_logfunction/glue_utils.zip"
+  tags:
+    Environment: "UAT"
+    Owner: "Engineering"
+    Source: "WMS"
+  trigger:
+    enabled: true
+    type: "SCHEDULED"
+    schedule: "cron(0 2 * * ? *)"  # Daily at 2 AM UTC
+
+- name: another-job
+  description: "Test Glue job for UAT"
+  script_file: another-job.py
+  glue_version: "5.0"
+  python_version: "3"
+  command_name: "glueetl"
+  worker_type: G.1X
+  number_of_workers: 5
+  tags:
+    Environment: "UAT"
+    Owner: "DataPlatform"
