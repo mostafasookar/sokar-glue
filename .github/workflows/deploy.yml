@@ -1,10 +1,10 @@
-name: Deploy Glue (UAT / PROD - Sandbox)
+name: Deploy Glue (UAT / PROD - Smart Pipeline)
 
 on:
   workflow_dispatch:
     inputs:
       skip_uat:
-        description: "Skip UAT?"
+        description: "Skip UAT deployment?"
         type: boolean
         default: false
       apply_uat:
@@ -12,7 +12,7 @@ on:
         type: boolean
         default: false
       skip_prod:
-        description: "Skip PROD?"
+        description: "Skip PROD deployment?"
         type: boolean
         default: true
       apply_prod:
@@ -31,11 +31,32 @@ env:
 
 jobs:
   # ==========================
-  #  UAT ENVIRONMENT
+  # COMMON VALIDATION STAGE
+  # ==========================
+  validate:
+    name: 🔍 Terraform Lint & Validate
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: hashicorp/setup-terraform@v3
+        with:
+          terraform_version: ${{ env.TERRAFORM_VERSION }}
+      - name: Terraform Init
+        working-directory: glue/envs/uat
+        run: terraform init -backend-config=backend-uat.tfvars
+      - name: Terraform Format Check
+        run: terraform fmt -check -recursive || true
+      - name: Terraform Validate
+        working-directory: glue/envs/uat
+        run: terraform validate
+
+  # ==========================
+  # UAT ENVIRONMENT
   # ==========================
   plan-uat:
     if: ${{ inputs.skip_uat == false }}
-    name: UAT - Terraform Plan
+    name: 🧪 UAT - Terraform Plan
+    needs: [validate]
     runs-on: ubuntu-latest
     defaults:
       run:
@@ -47,11 +68,7 @@ jobs:
           aws-access-key-id: ${{ secrets.AWS_ACCESS_KEY_ID }}
           aws-secret-access-key: ${{ secrets.AWS_SECRET_ACCESS_KEY }}
           aws-region: ${{ env.AWS_REGION_UAT }}
-
       - uses: hashicorp/setup-terraform@v3
-        with:
-          terraform_version: ${{ env.TERRAFORM_VERSION }}
-
       - run: terraform init -backend-config=backend-uat.tfvars
       - run: terraform plan -out=tfplan-uat
       - uses: actions/upload-artifact@v4
@@ -61,7 +78,7 @@ jobs:
 
   approve-uat:
     if: ${{ inputs.skip_uat == false && inputs.apply_uat == true }}
-    name: 🔸 Approve UAT Apply
+    name: ✅ Approve UAT Apply
     needs: [plan-uat]
     runs-on: ubuntu-latest
     steps:
@@ -75,7 +92,7 @@ jobs:
 
   apply-uat:
     if: ${{ inputs.skip_uat == false && inputs.apply_uat == true }}
-    name: UAT - Terraform Apply
+    name: 🚀 UAT - Terraform Apply
     needs: [approve-uat]
     runs-on: ubuntu-latest
     defaults:
@@ -111,13 +128,12 @@ jobs:
           issue-title: "Approve Promotion to PROD"
 
   # ==========================
-  #  PROD ENVIRONMENT
+  # PROD ENVIRONMENT
   # ==========================
-
-  # Path A: Run directly if UAT is skipped
-  plan-prod-direct:
-    name: PROD - Terraform Plan (Direct)
-    if: ${{ inputs.skip_uat == true && inputs.skip_prod == false }}
+  plan-prod:
+    name: 🧩 PROD - Terraform Plan
+    if: ${{ inputs.skip_prod == false }}
+    needs: [validate]
     runs-on: ubuntu-latest
     defaults:
       run:
@@ -130,34 +146,6 @@ jobs:
           aws-secret-access-key: ${{ secrets.AWS_SECRET_ACCESS_KEY }}
           aws-region: ${{ env.AWS_REGION_PROD }}
       - uses: hashicorp/setup-terraform@v3
-        with:
-          terraform_version: ${{ env.TERRAFORM_VERSION }}
-      - run: terraform init -backend-config=backend-prod.tfvars
-      - run: terraform plan -out=tfplan-prod
-      - uses: actions/upload-artifact@v4
-        with:
-          name: tfplan-prod
-          path: glue/envs/prod/tfplan-prod
-
-  # Path B: Run only after UAT approval and promotion gate
-  plan-prod-after-gate:
-    name: PROD - Terraform Plan (After Gate)
-    if: ${{ inputs.skip_uat == false && inputs.apply_uat == true && inputs.skip_prod == false }}
-    needs: [promotion-gate]
-    runs-on: ubuntu-latest
-    defaults:
-      run:
-        working-directory: glue/envs/prod
-    steps:
-      - uses: actions/checkout@v4
-      - uses: aws-actions/configure-aws-credentials@v4
-        with:
-          aws-access-key-id: ${{ secrets.AWS_ACCESS_KEY_ID }}
-          aws-secret-access-key: ${{ secrets.AWS_SECRET_ACCESS_KEY }}
-          aws-region: ${{ env.AWS_REGION_PROD }}
-      - uses: hashicorp/setup-terraform@v3
-        with:
-          terraform_version: ${{ env.TERRAFORM_VERSION }}
       - run: terraform init -backend-config=backend-prod.tfvars
       - run: terraform plan -out=tfplan-prod
       - uses: actions/upload-artifact@v4
@@ -167,8 +155,8 @@ jobs:
 
   approve-prod:
     if: ${{ inputs.skip_prod == false && inputs.apply_prod == true }}
-    name: 🔸 Approve PROD Apply
-    needs: [plan-prod-direct, plan-prod-after-gate]
+    name: ✅ Approve PROD Apply
+    needs: [promotion-gate, plan-prod]
     runs-on: ubuntu-latest
     steps:
       - name: Manual Approval - PROD
@@ -181,7 +169,7 @@ jobs:
 
   apply-prod:
     if: ${{ inputs.skip_prod == false && inputs.apply_prod == true }}
-    name: PROD - Terraform Apply
+    name: 🚀 PROD - Terraform Apply
     needs: [approve-prod]
     runs-on: ubuntu-latest
     defaults:
