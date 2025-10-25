@@ -23,14 +23,3 @@
     type: "SCHEDULED"
     schedule: "cron(0 2 * * ? *)"  # Daily at 2 AM UTC
 
-- name: another-job
-  description: "Test Glue job for UAT"
-  script_file: another-job.py
-  glue_version: "5.0"
-  python_version: "3"
-  command_name: "glueetl"
-  worker_type: G.1X
-  number_of_workers: 5
-  tags:
-    Environment: "UAT"
-    Owner: "DataPlatform"
