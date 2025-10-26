@@ -17,7 +17,7 @@ env:
 
 jobs:
   # ==========================================================
-  # 1️⃣ VALIDATE TERRAFORM (UAT + PROD)
+  # 🔍 VALIDATION STAGE
   # ==========================================================
   validate:
     name: 🔍 Terraform Init & Validate
@@ -25,7 +25,6 @@ jobs:
     steps:
       - uses: actions/checkout@v4
 
-      # Setup AWS credentials (needed for backend S3 access)
       - uses: aws-actions/configure-aws-credentials@v4
         with:
           aws-access-key-id: ${{ secrets.AWS_ACCESS_KEY_ID }}
@@ -52,13 +51,15 @@ jobs:
         working-directory: glue/envs/prod
         run: terraform validate || true
 
+
   # ==========================================================
-  # 2️⃣ APPROVE DEPLOYMENT TO UAT?
+  # 🟡 UAT STAGE
   # ==========================================================
-  approve-uat-deploy:
-    name: 🟡 Approve UAT Deployment?
+  uat-approve:
+    name: 🟡 UAT | Approve Deployment?
     needs: [validate]
     runs-on: ubuntu-latest
+    continue-on-error: true
     steps:
       - name: Manual Approval - Deploy to UAT?
         uses: trstringer/manual-approval@v1
@@ -69,15 +70,12 @@ jobs:
           issue-title: "Approve Deploy to UAT?"
           issue-body: |
             Approve to run Terraform plan/apply for UAT.
-            If declined, pipeline will skip UAT and move to PROD approval.
+            If declined, pipeline will skip UAT and continue to PROD.
 
-  # ==========================================================
-  # 3️⃣ PLAN UAT
-  # ==========================================================
-  plan-uat:
-    name: 🧪 UAT - Terraform Plan
-    needs: [approve-uat-deploy]
-    if: ${{ needs.approve-uat-deploy.result == 'success' }}
+  uat-plan:
+    name: 🟡 UAT | Terraform Plan
+    needs: [uat-approve]
+    if: ${{ needs.uat-approve.result == 'success' }}
     runs-on: ubuntu-latest
     defaults:
       run:
@@ -97,14 +95,12 @@ jobs:
           name: tfplan-uat
           path: glue/envs/uat/tfplan-uat
 
-  # ==========================================================
-  # 4️⃣ APPROVE APPLY TO UAT?
-  # ==========================================================
-  approve-uat-apply:
-    name: ✅ Approve Apply to UAT?
-    needs: [plan-uat]
-    if: ${{ needs.plan-uat.result == 'success' }}
+  uat-approve-apply:
+    name: 🟡 UAT | Approve Apply
+    needs: [uat-plan]
+    if: ${{ needs.uat-plan.result == 'success' }}
     runs-on: ubuntu-latest
+    continue-on-error: true
     steps:
       - name: Manual Approval - Apply to UAT?
         uses: trstringer/manual-approval@v1
@@ -117,13 +113,10 @@ jobs:
             Approve to apply Terraform plan in UAT.
             If declined, pipeline will skip UAT apply and move to PROD.
 
-  # ==========================================================
-  # 5️⃣ APPLY UAT
-  # ==========================================================
-  apply-uat:
-    name: 🚀 Apply UAT
-    needs: [approve-uat-apply]
-    if: ${{ needs.approve-uat-apply.result == 'success' }}
+  uat-apply:
+    name: 🟡 UAT | Apply
+    needs: [uat-approve-apply]
+    if: ${{ needs.uat-approve-apply.result == 'success' }}
     runs-on: ubuntu-latest
     defaults:
       run:
@@ -143,14 +136,16 @@ jobs:
       - run: terraform init -backend-config=backend-uat.tfvars
       - run: terraform apply -auto-approve tfplan-uat
 
+
   # ==========================================================
-  # 6️⃣ APPROVE PROMOTION TO PROD?
+  # 🔒 PROD STAGE
   # ==========================================================
-  approve-promote-prod:
-    name: 🔒 Approve Promotion to PROD?
+  prod-approve:
+    name: 🔒 PROD | Approve Promotion
     needs: [validate]
     if: always()
     runs-on: ubuntu-latest
+    continue-on-error: true
     steps:
       - name: Manual Approval - Promote to PROD?
         uses: trstringer/manual-approval@v1
@@ -163,13 +158,10 @@ jobs:
             Approve to start Terraform plan/apply in PROD.
             If declined, pipeline will stop here.
 
-  # ==========================================================
-  # 7️⃣ PLAN PROD
-  # ==========================================================
-  plan-prod:
-    name: 🧩 PROD - Terraform Plan
-    needs: [approve-promote-prod]
-    if: ${{ needs.approve-promote-prod.result == 'success' }}
+  prod-plan:
+    name: 🔒 PROD | Terraform Plan
+    needs: [prod-approve]
+    if: ${{ needs.prod-approve.result == 'success' }}
     runs-on: ubuntu-latest
     defaults:
       run:
@@ -182,25 +174,19 @@ jobs:
           aws-secret-access-key: ${{ secrets.AWS_SECRET_ACCESS_KEY }}
           aws-region: ${{ env.AWS_REGION_PROD }}
       - uses: hashicorp/setup-terraform@v3
-      - name: Terraform Init (PROD)
-        run: terraform init -backend-config=backend-prod.tfvars
-      - name: Terraform Validate (PROD)
-        run: terraform validate || true
-      - name: Terraform Plan (PROD)
-        run: terraform plan -out=tfplan-prod
+      - run: terraform init -backend-config=backend-prod.tfvars
+      - run: terraform plan -out=tfplan-prod
       - uses: actions/upload-artifact@v4
         with:
           name: tfplan-prod
           path: glue/envs/prod/tfplan-prod
 
-  # ==========================================================
-  # 8️⃣ APPROVE APPLY TO PROD?
-  # ==========================================================
-  approve-prod-apply:
-    name: ✅ Approve Apply to PROD?
-    needs: [plan-prod]
-    if: ${{ needs.plan-prod.result == 'success' }}
+  prod-approve-apply:
+    name: 🔒 PROD | Approve Apply
+    needs: [prod-plan]
+    if: ${{ needs.prod-plan.result == 'success' }}
     runs-on: ubuntu-latest
+    continue-on-error: true
     steps:
       - name: Manual Approval - Apply to PROD?
         uses: trstringer/manual-approval@v1
@@ -213,13 +199,10 @@ jobs:
             Approve to apply Terraform plan in PROD.
             If declined, pipeline ends cleanly.
 
-  # ==========================================================
-  # 9️⃣ APPLY PROD
-  # ==========================================================
-  apply-prod:
-    name: 🚀 Apply PROD
-    needs: [approve-prod-apply]
-    if: ${{ needs.approve-prod-apply.result == 'success' }}
+  prod-apply:
+    name: 🔒 PROD | Apply
+    needs: [prod-approve-apply]
+    if: ${{ needs.prod-approve-apply.result == 'success' }}
     runs-on: ubuntu-latest
     defaults:
       run:

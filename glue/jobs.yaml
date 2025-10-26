@@ -23,26 +23,3 @@
     type: "SCHEDULED"
     schedule: "cron(0 2 * * ? *)"  # Daily at 2 AM UTC
 
-# 🆕 New job
-- name: wms-to-dataplatform-fi-part2
-  description: "Incremental WMS data sync to Data Platform"
-  script_file: wms-to-dataplatform-fi-part2.py
-  glue_version: "5.0"
-  python_version: "3"
-  command_name: "glueetl"
-  worker_type: G.1X
-  number_of_workers: 3
-  connections:
-    - "WMS-ADOPF001"
-  default_arguments:
-    "--extra-py-files": "s3://glue-sokar-test/glue_global_logfunction/glue_utils.zip"
-  tags:
-    Environment: "UAT"
-    Owner: "DataEngineering"
-    Source: "WMS"
-  trigger:
-    enabled: true
-    type: "SCHEDULED"
-    schedule: "cron(0 3 * * ? *)"  # Daily at 3 AM UTC
-
-# 🆕 New job number 3
