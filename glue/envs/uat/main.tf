@@ -2,10 +2,13 @@
 # UAT Glue Infrastructure Deployment (Sandbox)
 ########################################################
 
+terraform {
+  backend "s3" {}
+}
+
 module "glue_role" {
   source    = "git::https://github.com/mostafasookar/APPS.git//APP-modules/glue-module/glue-role?ref=main"
   role_name = "GlueServiceRole-UAT"
-  # default tags are provided by module and output back as glue_role_tags
 }
 
 module "glue_manager" {
@@ -23,4 +26,3 @@ module "glue_trigger" {
   dependency_modules  = [module.glue_manager]
   tags                = module.glue_role.glue_role_tags
 }
-
