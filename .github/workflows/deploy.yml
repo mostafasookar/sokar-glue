@@ -59,7 +59,6 @@ jobs:
     name: 🟡 UAT | Approve Deployment?
     needs: [validate]
     runs-on: ubuntu-latest
-    continue-on-error: true
     steps:
       - name: Manual Approval - Deploy to UAT?
         uses: trstringer/manual-approval@v1
@@ -70,7 +69,7 @@ jobs:
           issue-title: "Approve Deploy to UAT?"
           issue-body: |
             Approve to run Terraform plan/apply for UAT.
-            If declined, pipeline will skip UAT and continue to PROD.
+            If declined, the UAT pipeline stops completely.
 
   uat-plan:
     name: 🟡 UAT | Terraform Plan
@@ -100,7 +99,6 @@ jobs:
     needs: [uat-plan]
     if: ${{ needs.uat-plan.result == 'success' }}
     runs-on: ubuntu-latest
-    continue-on-error: true
     steps:
       - name: Manual Approval - Apply to UAT?
         uses: trstringer/manual-approval@v1
@@ -186,7 +184,6 @@ jobs:
     needs: [prod-plan]
     if: ${{ needs.prod-plan.result == 'success' }}
     runs-on: ubuntu-latest
-    continue-on-error: true
     steps:
       - name: Manual Approval - Apply to PROD?
         uses: trstringer/manual-approval@v1
@@ -221,3 +218,31 @@ jobs:
           path: glue/envs/prod
       - run: terraform init -backend-config=backend-prod.tfvars
       - run: terraform apply -auto-approve tfplan-prod
+
+
+  # ==========================================================
+  # 📄 FINAL SUMMARY STAGE
+  # ==========================================================
+  summary:
+    name: 📄 Deployment Summary
+    needs: [uat-approve, uat-apply, prod-apply]
+    if: always()
+    runs-on: ubuntu-latest
+    steps:
+      - name: Generate Deployment Summary
+        run: |
+          echo "## 🚀 Deployment Summary" >> $GITHUB_STEP_SUMMARY
+          if [[ '${{ needs.uat-approve.result }}' == 'failure' ]]; then
+            echo "🟡 **UAT was declined** – pipeline skipped UAT and continued to PROD." >> $GITHUB_STEP_SUMMARY
+          elif [[ '${{ needs.uat-apply.result }}' == 'success' ]]; then
+            echo "✅ **UAT applied successfully**." >> $GITHUB_STEP_SUMMARY
+          fi
+
+          if [[ '${{ needs.prod-apply.result }}' == 'success' ]]; then
+            echo "🔒 **PROD deployed successfully!** 🎉" >> $GITHUB_STEP_SUMMARY
+          elif [[ '${{ needs.prod-apply.result }}' == 'skipped' ]]; then
+            echo "⚪ **PROD stage skipped** (approval declined)." >> $GITHUB_STEP_SUMMARY
+          fi
+
+          echo "---" >> $GITHUB_STEP_SUMMARY
+          echo "🕒 Completed at: $(date)" >> $GITHUB_STEP_SUMMARY
