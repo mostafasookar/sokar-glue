@@ -148,7 +148,7 @@ jobs:
   # ==========================================================
   approve-promote-prod:
     name: 🔒 Approve Promotion to PROD?
-    needs: [validate, approve-uat-deploy, plan-uat, approve-uat-apply, apply-uat]
+    needs: [validate]
     if: always()
     runs-on: ubuntu-latest
     steps:
