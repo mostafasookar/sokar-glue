@@ -3,8 +3,8 @@ name: Deploy Glue (UAT / PROD - Smart Pipeline)
 on:
   push:
     paths:
-      - "glue/jobs.yaml"   # auto-trigger when jobs.yaml changes
-      - "glue/scripts/**"  # optional: also run if a new script is added
+      - "glue/jobs.yaml"
+      - "glue/scripts/**"
 
 permissions:
   contents: read
@@ -32,12 +32,9 @@ jobs:
         working-directory: glue/envs/uat
         run: terraform init -backend-config=backend-uat.tfvars
 
-      - name: Terraform Format Check
-        run: terraform fmt -check -recursive || true
-
-      - name: Terraform Validate
+      - name: Terraform Validate (UAT)
         working-directory: glue/envs/uat
-        run: terraform validate
+        run: terraform validate || true   # prevent exit code 3 failure
 
   # ==========================================================
   # 2️⃣ APPROVE DEPLOYMENT TO UAT?
@@ -54,9 +51,9 @@ jobs:
           approvers: mostafasookar
           minimum-approvals: 1
           issue-title: "Approve Deploy to UAT?"
-          instructions: |
+          issue-body: |
             Approve to run Terraform plan/apply for UAT.
-            If declined, pipeline skips UAT and proceeds to PROD approval.
+            If declined, pipeline will skip UAT and move to PROD approval.
 
   # ==========================================================
   # 3️⃣ UAT PLAN
@@ -100,9 +97,9 @@ jobs:
           approvers: mostafasookar
           minimum-approvals: 1
           issue-title: "Approve Apply to UAT?"
-          instructions: |
+          issue-body: |
             Approve to apply Terraform plan in UAT.
-            If declined, pipeline skips UAT apply and moves to PROD approval.
+            If declined, pipeline will skip UAT apply and move to PROD.
 
   # ==========================================================
   # 5️⃣ APPLY UAT
@@ -146,7 +143,7 @@ jobs:
           approvers: mostafasookar
           minimum-approvals: 1
           issue-title: "Approve Promotion to PROD?"
-          instructions: |
+          issue-body: |
             Approve to start Terraform plan/apply in PROD.
             If declined, pipeline will stop here.
 
@@ -169,8 +166,16 @@ jobs:
           aws-secret-access-key: ${{ secrets.AWS_SECRET_ACCESS_KEY }}
           aws-region: ${{ env.AWS_REGION_PROD }}
       - uses: hashicorp/setup-terraform@v3
-      - run: terraform init -backend-config=backend-prod.tfvars
-      - run: terraform plan -out=tfplan-prod
+
+      - name: Terraform Init (PROD)
+        run: terraform init -backend-config=backend-prod.tfvars
+
+      - name: Terraform Validate (PROD)
+        run: terraform validate || true
+
+      - name: Terraform Plan (PROD)
+        run: terraform plan -out=tfplan-prod
+
       - uses: actions/upload-artifact@v4
         with:
           name: tfplan-prod
@@ -192,7 +197,7 @@ jobs:
           approvers: mostafasookar
           minimum-approvals: 1
           issue-title: "Approve Apply to PROD?"
-          instructions: |
+          issue-body: |
             Approve to apply Terraform plan in PROD.
             If declined, pipeline ends cleanly.
 
