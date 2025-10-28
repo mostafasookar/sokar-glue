@@ -29,25 +29,34 @@ jobs:
     if: ${{ github.event.inputs.environment == 'uat' }}
     name: 🟡 Deploy to UAT
     runs-on: ubuntu-latest
+
     steps:
-      - uses: actions/checkout@v4
-      - uses: hashicorp/setup-terraform@v3
+      - name: 📦 Checkout Code
+        uses: actions/checkout@v4
+
+      - name: ⚙️ Setup Terraform
+        uses: hashicorp/setup-terraform@v3
         with:
           terraform_version: ${{ env.TERRAFORM_VERSION }}
 
-      - uses: aws-actions/configure-aws-credentials@v4
+      - name: 🔐 Configure AWS Credentials
+        uses: aws-actions/configure-aws-credentials@v4
         with:
           aws-access-key-id: ${{ secrets.AWS_ACCESS_KEY_ID }}
           aws-secret-access-key: ${{ secrets.AWS_SECRET_ACCESS_KEY }}
           aws-region: ${{ env.AWS_REGION_UAT }}
 
-      - name: Terraform Init & Validate (UAT)
+      - name: 🧩 Terraform Init & Validate (UAT)
         working-directory: glue/envs/uat
         run: |
           terraform init -backend-config=backend-uat.tfvars
           terraform validate || true
 
-      - name: 🟡 Manual Approval - Apply to UAT?
+      - name: 📋 Terraform Plan (UAT)
+        working-directory: glue/envs/uat
+        run: terraform plan -out=tfplan-uat
+
+      - name: ✅ Manual Approval - Apply to UAT?
         uses: trstringer/manual-approval@v1
         with:
           secret: ${{ github.token }}
@@ -55,14 +64,10 @@ jobs:
           minimum-approvals: 1
           issue-title: "Approve Apply to UAT?"
           issue-body: |
-            Approve to apply Terraform plan in UAT.
-            If declined, pipeline ends cleanly.
+            Terraform plan for UAT is ready.
+            Approve to proceed with apply.
 
-      - name: Terraform Plan (UAT)
-        working-directory: glue/envs/uat
-        run: terraform plan -out=tfplan-uat
-
-      - name: Terraform Apply (UAT)
+      - name: 🚀 Terraform Apply (UAT)
         working-directory: glue/envs/uat
         run: terraform apply -auto-approve tfplan-uat
 
@@ -74,25 +79,34 @@ jobs:
     if: ${{ github.event.inputs.environment == 'prod' }}
     name: 🔒 Deploy to PROD
     runs-on: ubuntu-latest
+
     steps:
-      - uses: actions/checkout@v4
-      - uses: hashicorp/setup-terraform@v3
+      - name: 📦 Checkout Code
+        uses: actions/checkout@v4
+
+      - name: ⚙️ Setup Terraform
+        uses: hashicorp/setup-terraform@v3
         with:
           terraform_version: ${{ env.TERRAFORM_VERSION }}
 
-      - uses: aws-actions/configure-aws-credentials@v4
+      - name: 🔐 Configure AWS Credentials
+        uses: aws-actions/configure-aws-credentials@v4
         with:
           aws-access-key-id: ${{ secrets.AWS_ACCESS_KEY_ID }}
           aws-secret-access-key: ${{ secrets.AWS_SECRET_ACCESS_KEY }}
           aws-region: ${{ env.AWS_REGION_PROD }}
 
-      - name: Terraform Init & Validate (PROD)
+      - name: 🧩 Terraform Init & Validate (PROD)
         working-directory: glue/envs/prod
         run: |
           terraform init -backend-config=backend-prod.tfvars
           terraform validate || true
 
-      - name: 🔒 Manual Approval - Apply to PROD?
+      - name: 📋 Terraform Plan (PROD)
+        working-directory: glue/envs/prod
+        run: terraform plan -out=tfplan-prod
+
+      - name: ✅ Manual Approval - Apply to PROD?
         uses: trstringer/manual-approval@v1
         with:
           secret: ${{ github.token }}
@@ -100,14 +114,10 @@ jobs:
           minimum-approvals: 1
           issue-title: "Approve Apply to PROD?"
           issue-body: |
-            Approve to apply Terraform plan in PROD.
-            If declined, pipeline ends cleanly.
+            Terraform plan for PROD is ready.
+            Approve to proceed with apply.
 
-      - name: Terraform Plan (PROD)
-        working-directory: glue/envs/prod
-        run: terraform plan -out=tfplan-prod
-
-      - name: Terraform Apply (PROD)
+      - name: 🚀 Terraform Apply (PROD)
         working-directory: glue/envs/prod
         run: terraform apply -auto-approve tfplan-prod
 
@@ -120,17 +130,12 @@ jobs:
     needs: [deploy-uat, deploy-prod]
     if: always()
     runs-on: ubuntu-latest
+
     steps:
       - name: Generate Deployment Summary
         run: |
           echo "## 🚀 Deployment Summary" >> $GITHUB_STEP_SUMMARY
           echo "Environment: **${{ github.event.inputs.environment }}**" >> $GITHUB_STEP_SUMMARY
-
-          if [[ '${{ github.event.inputs.environment }}' == 'uat' ]]; then
-            echo "🟡 **UAT Deployment Completed**" >> $GITHUB_STEP_SUMMARY
-          elif [[ '${{ github.event.inputs.environment }}' == 'prod' ]]; then
-            echo "🔒 **PROD Deployment Completed**" >> $GITHUB_STEP_SUMMARY
-          fi
-
+          echo "✅ Terraform plan and apply completed successfully." >> $GITHUB_STEP_SUMMARY
           echo "---" >> $GITHUB_STEP_SUMMARY
           echo "🕒 Completed at: $(date)" >> $GITHUB_STEP_SUMMARY
